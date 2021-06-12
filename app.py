@@ -19,7 +19,6 @@ from electobot.exceptions import (VoteExceptionTooFew, VoteExceptionTooMany,
 from electobot.send_email import send_message
 
 app = Flask(__name__)
-EMAIL_PATTERN = os.environ.get('ELECTOBOT_EMAIL_PATTERN', 'maastrichtuniversity.nl$')
 
 def parse_template(path, **kwargs):
     with open(path) as file_:
@@ -46,10 +45,11 @@ def register():
                               event_name=event.name)
     elif request.method == 'POST':
         email = request.form.get('email')
-        match = re.search(EMAIL_PATTERN, email)
+        print(event.email_pattern)
+        match = re.search(event.email_pattern, email)
         if not match:
             return parse_template('templates/error.html',
-                                  message='Email address not permitted. Use a maastrichtuniversity.nl email')
+                                  message='Email address not permitted.')
         session = get_session()
         try:
             voter = create_voter(event.event_id, email, session=session)

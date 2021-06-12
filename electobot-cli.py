@@ -3,7 +3,7 @@ import argparse
 
 from tabulate import tabulate
 
-from electobot.database import (create_event, create_poll,
+from electobot.database import (create_event, delete_event, create_poll,
                                 Event, Voter, Poll, PollOption, VoteCast,
                                 Proxy, render_table, create_engine,
                                 create_default_session, create_session,
@@ -38,6 +38,7 @@ def main():
     ## Create event
     create_event_parser = create_subparsers.add_parser('event', help="Add event")
     create_event_parser.add_argument('name')
+    create_event_parser.add_argument('--email_pattern', default=".*@.*\..*")
     ## Create poll
     create_poll_parser = create_subparsers.add_parser('poll',
                                                       help="Add poll")
@@ -60,6 +61,13 @@ def main():
     create_voter_parser.add_argument('proxy_email')
     create_voter_parser.add_argument('-e', '--event', default=None)
 
+    # Delete
+    delete_parser = subparsers.add_parser('delete')
+    delete_subparsers = delete_parser.add_subparsers(help='commands',
+                                                     dest='object')
+    ## Delete event
+    delete_event_parser = delete_subparsers.add_parser('event', help="Add event")
+    delete_event_parser.add_argument('id')
     # Print low level table
     print_table_parser = subparsers.add_parser('print_table',
                                                help='Print underlying SQL table')
@@ -98,10 +106,16 @@ def main():
         else:
             engine = create_engine(path=args.path)
         create_all_tables(engine)
+    elif args.command == 'delete':
+        if args.object == 'event':
+            if delete_event(args.id):
+                print("Event {} deleted.".format(args.id))
+            else:
+                print("Failed to delete event {}".format(args.id))
     elif args.command == 'create':
         if args.object == 'event':
-            event = create_event(args.name, session=session)
-            print("Event {} created: {}".format(event_register_url(event.name, event.event_id, session=session)))
+            event = create_event(args.name, session=session, email_pattern=args.email_pattern)
+            print("Event {} created: {}".format(event.name, event_register_url(event.event_id, session)))
         elif args.object == 'poll':
             create_poll(args.event, args.name, session=session)
         elif args.object == 'poll_option':
@@ -138,6 +152,8 @@ def main():
                 rows.append([event.event_id, event.name,
                             event_register_url(event.event_id, session=session)])
             print(tabulate(rows, headers=headers))
+            if len(rows) == 0:
+                print("\nNo events.")
         elif args.object == 'voters':
             voters = session.query(Voter).all()
             headers = ['ID', 'Email', 'Voting link']
