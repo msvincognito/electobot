@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import argparse
 
+from tabulate import tabulate
+
 from electobot.database import (create_event, create_poll,
                                 Event, Voter, Poll, PollOption, VoteCast,
                                 Proxy, render_table, create_engine,
@@ -8,7 +10,8 @@ from electobot.database import (create_event, create_poll,
                                 create_all_tables, create_voter,
                                 most_recent_poll, create_poll_option,
                                 create_proxy, event_from_identifier,
-                                votes_to_table)
+                                votes_to_table, close_poll, open_poll)
+from electobot.main import event_register_url, voting_url
 
 NAME_TYPE_MAPPING = {
     'events': Event,
@@ -33,32 +36,55 @@ def main():
     create_subparsers = create_parser.add_subparsers(help='commands',
                                                      dest='object')
     ## Create event
-    create_event_parser = create_subparsers.add_parser('event')
+    create_event_parser = create_subparsers.add_parser('event', help="Add event")
     create_event_parser.add_argument('name')
     ## Create poll
-    create_poll_parser = create_subparsers.add_parser('poll')
+    create_poll_parser = create_subparsers.add_parser('poll',
+                                                      help="Add poll")
     create_poll_parser.add_argument('name')
     create_poll_parser.add_argument('-e', '--event', default=None)
     ## Create poll option
-    create_voter_parser = create_subparsers.add_parser('poll_option')
+    create_voter_parser = create_subparsers.add_parser('poll_option',
+                                                       help="Add options to a poll")
     create_voter_parser.add_argument('name')
     create_voter_parser.add_argument('--poll_id', default=None)
     ## Create voter
-    create_voter_parser = create_subparsers.add_parser('voter')
+    create_voter_parser = create_subparsers.add_parser('voter',
+                                                       help="Manually create voters")
     create_voter_parser.add_argument('email')
     create_voter_parser.add_argument('-e', '--event', default=None)
     ## Create voter proxy
-    create_voter_parser = create_subparsers.add_parser('proxy')
+    create_voter_parser = create_subparsers.add_parser('proxy', 
+                                                       help="Create proxy votes")
     create_voter_parser.add_argument('present_voter_email')
     create_voter_parser.add_argument('proxy_email')
     create_voter_parser.add_argument('-e', '--event', default=None)
 
-    # List
-    list_parser = subparsers.add_parser('print_table')
-    list_parser.add_argument('object')
+    # Print low level table
+    print_table_parser = subparsers.add_parser('print_table',
+                                               help='Print underlying SQL table')
+    print_table_parser.add_argument('object')
+    # List high level things (with links)
+    list_parser = subparsers.add_parser('list',
+                                        help='List objects')
+    list_subparsers = list_parser.add_subparsers(help='commands',
+                                                 dest='object')
+    ## List events and registration links
+    list_events_parser = list_subparsers.add_parser('events',
+                                                    help="List events and registration links")
+    ## List user token links
+    list_voters_parser = list_subparsers.add_parser('voters',
+                                                    help="List voters and voting links")
+    list_voters_parser.add_argument('-e', '--event', default=None)
     # Tally
-    list_parser = subparsers.add_parser('tally', help="Count votes for a poll")
-    list_parser.add_argument('--poll_id', default=None)
+    tally_parser = subparsers.add_parser('tally', help="Count votes for a poll")
+    tally_parser.add_argument('--poll_id', default=None)
+    # Close poll
+    close_parser = subparsers.add_parser('close', help="Close a poll")
+    close_parser.add_argument('--poll_id', default=None)
+    # Open poll
+    open_parser = subparsers.add_parser('open', help="Open a poll")
+    open_parser.add_argument('--poll_id', default=None)
 
     args = parser.parse_args()
     if args.path is None:
@@ -74,7 +100,8 @@ def main():
         create_all_tables(engine)
     elif args.command == 'create':
         if args.object == 'event':
-            create_event(args.name, session=session)
+            event = create_event(args.name, session=session)
+            print("Event {} created: {}".format(event_register_url(event.name, event.event_id, session=session)))
         elif args.object == 'poll':
             create_poll(args.event, args.name, session=session)
         elif args.object == 'poll_option':
@@ -102,12 +129,44 @@ def main():
             print("Unknown object. Possible values:", list(NAME_TYPE_MAPPING))
             exit(1)
         print(render_table(NAME_TYPE_MAPPING[args.object], session=session))
+    elif args.command == 'list':
+        if args.object == 'events':
+            events = session.query(Event).all()
+            headers = ['ID', 'Name', 'Registration link']
+            rows = []
+            for event in events:
+                rows.append([event.event_id, event.name,
+                            event_register_url(event.event_id, session=session)])
+            print(tabulate(rows, headers=headers))
+        elif args.object == 'voters':
+            voters = session.query(Voter).all()
+            headers = ['ID', 'Email', 'Voting link']
+            rows = []
+            for voter in voters:
+                rows.append([
+                    voter.voter_id, voter.email, voting_url(voter, session=session)
+                ])
+            print(tabulate(rows, headers=headers))
     elif args.command == 'tally':
         if args.poll_id is None:
             poll = most_recent_poll(session=session)
         else:
             poll = session.query(Poll).filter_by(poll_id=int(args.poll_id)).first()
         print(votes_to_table(poll.poll_id, session=session))
+    elif args.command == 'close':
+        if args.poll_id is None:
+            poll = most_recent_poll(session=session)
+        else:
+            poll = session.query(Poll).filter_by(poll_id=int(args.poll_id)).first()
+        close_poll(poll.poll_id, session=session)
+        print("Poll {} closed".format(poll.name))
+    elif args.command == 'open':
+        if args.poll_id is None:
+            poll = most_recent_poll(session=session)
+        else:
+            poll = session.query(Poll).filter_by(poll_id=int(args.poll_id)).first()
+        open_poll(poll.poll_id, session=session)
+        print("Poll {} opened".format(poll.name))
     else:
         exit(1)
         print("Unknown command")

@@ -11,7 +11,8 @@ from copy import copy
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy import create_engine as sqlalchemy_create_engine
-from sqlalchemy import Column, Integer, ForeignKey, String, Table, Float, DateTime
+from sqlalchemy import (Column, Integer, ForeignKey, String, Table, Float,
+                        DateTime, Boolean)
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.sql.expression import desc
 from tabulate import tabulate
@@ -19,7 +20,7 @@ from tabulate import tabulate
 from .exceptions import (VoteExceptionTooFew, VoteExceptionTooMany,
                          VoteExceptionWrongId, VoteExceptionNegative,
                          VoteExceptionWrongTime, VoteExceptionWrongEvent,
-                         VoteExceptionAlreadyVoted)
+                         VoteExceptionAlreadyVoted, DBExceptionEmailAlreadyUsed)
 from .token import gen_token
 
 logger = logging.getLogger('databases')
@@ -181,6 +182,8 @@ def create_voter(event_identifier: Union[int, str, None],
     """Creates a voter for an event. If the event is None, the voter will be
     for the most recent event.
     """
+    if voter_from_email(event_identifier, email, session=session):
+        raise DBExceptionEmailAlreadyUsed
     token = gen_token()
     while voter_from_token(token, session=session) is not None:
         token = gen_token()
@@ -240,6 +243,7 @@ class Poll(Base):
     name = Column(String, nullable=False)
     start_time = Column(DateTime, nullable=False)
     end_time = Column(DateTime, nullable=True)
+    is_open = Column(Boolean, default=False)
 
 def create_poll(event_identifier: Union[int, str, None],
                 name: str, start_time: Union[datetime, None]=None,
@@ -304,6 +308,15 @@ def close_poll(poll_id: int, time: Union[datetime, None]=None,
     poll = session.query(Poll).filter_by(poll_id=poll_id).first()
     assert poll.start_time <= time
     poll.end_time = time
+    poll.is_open = False
+    session.commit()
+
+def open_poll(poll_id: int, time: Union[datetime, None]=None,
+               session: Union[SQLAlchemySession, None]=None):
+    session = get_session(session)
+    poll = session.query(Poll).filter_by(poll_id=poll_id).first()
+    poll.end_time = None
+    poll.is_open = True
     session.commit()
 
 class VoteCast(Base):
@@ -318,6 +331,7 @@ def is_voter_registered_for_poll(voter: Voter, poll: Poll,
 
 def has_voter_voted(voter: Voter, poll: Poll,
                     session: Union[SQLAlchemySession, None]=None) -> bool:
+    session = get_session(session)
     cast = session.query(VoteCast).filter_by(
         voter_id=voter.voter_id, poll_id=poll.poll_id).first()
     if cast is None:
@@ -351,9 +365,9 @@ def cast_vote(voter: Voter, vote_dict: dict,
     if time is None:
         time = datetime.utcnow()
     # Validate
-    if sum(vote_dict.values() < votes_for_voter(voter, session=session)):
+    if sum(vote_dict.values()) < votes_for_voter(voter, session=session):
         raise VoteExceptionTooFew
-    if sum(vote_dict.values() > votes_for_voter(voter, session=session)):
+    if sum(vote_dict.values()) > votes_for_voter(voter, session=session):
         raise VoteExceptionTooMany
     if any(val < 0 for val in vote_dict.values()):
         raise VoteExceptionNegative
@@ -380,7 +394,9 @@ def cast_vote(voter: Voter, vote_dict: dict,
         raise VoteExceptionAlreadyVoted
     if time < poll.start_time:
         raise VoteExceptionWrongTime
-    elif time >= poll.end_time:
+    elif poll.end_time is not None and time >= poll.end_time:
+        raise VoteExceptionWrongTime
+    elif not poll.is_open:
         raise VoteExceptionWrongTime
     # Update vote counts
     for key, votes in vote_dict.items():
@@ -389,6 +405,7 @@ def cast_vote(voter: Voter, vote_dict: dict,
         key_int = int(key)
         poll_option = session.query(PollOption).filter_by(poll_option_id=key_int).first()
         poll_option.total_votes += votes
+    _cast_vote_into_table(voter, poll, session=session)
     session.commit()
 
 def create_all_tables(engine):

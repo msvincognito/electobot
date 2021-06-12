@@ -3,28 +3,30 @@ This is a basic flask app that allows for simple one time
 registering & password changes.
 """
 import re
+import os
 
 from flask import Flask, request
 
 from electobot.database import (event_from_token, create_voter,
-                                voter_from_token, poll_from_id, has_voter_voted)
+                                voter_from_token, poll_from_id,
+                                has_voter_voted, cast_vote, get_session)
 from electobot.main import (event_register_url, voting_url, poll_list_html,
-                            poll_options_html, parse_vote_form, cast_vote,
-                            poll_url)
-from .exceptions import (VoteExceptionTooFew, VoteExceptionTooMany,
+                            poll_options_html, parse_vote_form, poll_url)
+from electobot.exceptions import (VoteExceptionTooFew, VoteExceptionTooMany,
                          VoteExceptionWrongId, VoteExceptionNegative,
                          VoteExceptionWrongTime, VoteExceptionWrongEvent,
-                         VoteExceptionAlreadyVoted)
+                         VoteExceptionAlreadyVoted, DBExceptionEmailAlreadyUsed)
 from electobot.send_email import send_message
 
 app = Flask(__name__)
-ELECTOBOT_LEGAL_EMAIL_PATTERN = r"maastrichtuniversity.nl$"
+EMAIL_PATTERN = os.environ.get('ELECTOBOT_EMAIL_PATTERN', 'maastrichtuniversity.nl$')
 
 def parse_template(path, **kwargs):
     with open(path) as file_:
         str_ = file_.read() 
         for from_, to in kwargs.items():
-            str_ = str_.replace("{%"+from_+"%}", to)
+            str_ = str_.replace("{% "+from_+" %}", to)
+            str_ = str_.replace("{%"+from_+"%}", to) # quite a messy solution but whatever
         return str_
 
 @app.route('/register', methods=['GET', 'POST'])
@@ -44,15 +46,20 @@ def register():
                               event_name=event.name)
     elif request.method == 'POST':
         email = request.form.get('email')
-        match = re.search(ELECTOBOT_LEGAL_EMAIL_PATTERN, email)
+        match = re.search(EMAIL_PATTERN, email)
         if not match:
             return parse_template('templates/error.html',
                                   message='Email address not permitted. Use a maastrichtuniversity.nl email')
-        voter = create_voter(event.event_id, email)
-        url = voting_url(voter)
+        session = get_session()
+        try:
+            voter = create_voter(event.event_id, email, session=session)
+        except DBExceptionEmailAlreadyUsed:
+            return parse_template('templates/error.html',
+                                  message='Email already used. Check your email. If you did not get an email, contact the host of the vote.')
+        url = voting_url(voter, session=session)
         send_message(email, "{} voting link".format(event.name),
                      "The URL to vote is: {}".format(url))
-        return parse_template('templates/blank.html', "Voting email sent! Check your {} mail.".format(email))
+        return parse_template('templates/blank.html', message="Voting email sent! Check your {} mail.".format(email))
 
 @app.route('/vote', methods=['GET', 'POST'])
 def vote():
@@ -64,7 +71,8 @@ def vote():
     if not voter:
         return parse_template('templates/error.html',
                               message="Invalid token. Please use the link from your email.")
-    all_votes_url_back = "<a href="">Go back</a>".format(voting_url(voter))
+    all_votes_url_back = "<a href=\"{}\">Go back</a>".format(voting_url(voter))
+    print(all_votes_url_back)
     if request.method == 'GET':
         poll_id = request.args.get('poll_id')
         if not poll_id: # Send a list of possible polls
@@ -123,53 +131,9 @@ def vote():
         except VoteExceptionAlreadyVoted:
             return parse_template('templates/error.html',
                                   message="You already voted for this poll. {}".format(all_votes_url_back))
-        return parse_template('templates/message.html', message='Vote cast! {}'.format(all_votes_url_back))
+        return parse_template('templates/blank.html', message='Vote cast! {}'.format(all_votes_url_back))
 
 @app.route('/', methods=['GET'])
 def welcome():
     return parse_template('templates/blank.html',
                           message="Hello! Ask the vote organizers to register, or check your email if you already did.")
-    if request.method == 'GET':
-        token = request.args.get('token')
-        if not token:
-            return parse_template('templates/register.html')
-        elif verify_token(token) and not token_already_used(token):
-            return parse_template('templates/vote.html', token=token)
-        else:
-            return parse_template('templates/wrong_token.html', token=token)
-    if request.method == 'POST':
-        token = request.form.get('token')
-        email = request.form.get('email')
-        print(request.form)
-        votes = []
-        for id_, value in request.form.items():
-            if 'vote' in id_ and value == 'on':
-                votes.append(id_[5:])
-        if email:
-            if not 'maastrichtuniversity.nl' in email:
-                return parse_template('templates/not_uni_email.html',
-                                      email=email)
-            try:
-                token = new_token(email)
-            except UserAlreadyExists:
-                return parse_template('templates/email_used.html')
-            url = token_url(token)
-            try:
-                send_message(email, "Website competition vote token", 
-                             "The URL to vote is: {}".format(url))
-                return parse_template('templates/email_sent.html')
-            except:
-                return parse_template('templates/error.html')
-        elif len(votes) > 0:
-            if verify_token(token) and not token_already_used(token):
-                if len(votes) == 3:
-                    for vote in votes:
-                        add_vote(vote)
-                    use_token(token)
-                    return parse_template('templates/voted.html')
-                else:
-                    return parse_template('templates/wrong_number_of_votes.html')
-            else:
-                return parse_template('templates/wrong_token.html', token=token)
-        else:
-            return parse_template('templates/error.html')

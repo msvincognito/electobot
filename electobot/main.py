@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime
 from typing import Union
+import os
 
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 
@@ -27,7 +28,7 @@ def form_url(path, args, root=URL_ROOT):
         return '{}{}?{}'.format(root, path, '&'.join(strs))
 
 def event_register_url(event_identifier: Union[int, str, None],
-                      session: Union[SQLAlchemySession, None]=None)
+                       session: Union[SQLAlchemySession, None]=None):
     session = get_session(session)
     event = event_from_identifier(event_identifier, session=session)
     if event is None:
@@ -53,20 +54,21 @@ def poll_list_html(voter_token,
     # whether this voter exists should have been validated already
     polls = polls_from_event(voter.event_id, session=session)
     html_list_entries = [
-        "<li><a href="{}">{}</a></li>".format(poll_url(voter_token,
+        "<li><a href=\"{}\">{}</a></li>".format(poll_url(voter_token,
                                                        poll.poll_id),
                                               poll.name)
         for poll in polls
+        if poll.is_open
     ]
     return '\n'.join(html_list_entries)
 
 def _vote_option_entry(poll_option_id_str, poll_option_name, vote_count):
     return """
-<li><label for="vote${}">{}:</label><input type="number" id="vote${}" name="vote${}" min="1" max="{}"></li>
+<li><label for="vote${}">{}:</label><input type="number" id="vote${}" name="vote${}" min="0" max="{}" value="0"></li>
 """.format(poll_option_id_str, poll_option_name, poll_option_id_str,
            poll_option_id_str, vote_count)
 
-def poll_options_htmls(voter: Voter, poll: Poll,
+def poll_options_html(voter: Voter, poll: Poll,
                        session: Union[SQLAlchemySession, None]=None):
     proxies = proxies_from_voter(voter, session=session)
     if len(proxies) > 0:
@@ -101,7 +103,7 @@ def _parse_vote_form_key(vote_form_key):
         shortened = vote_form_key.replace('vote$', '')
         try:
             return int(shortened)
-        else:
+        except:
             return shortened # 'abstain'
     else:
         raise ValueError('Invalid string form')

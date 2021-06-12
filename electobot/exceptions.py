@@ -20,3 +20,6 @@ class VoteExceptionWrongEvent(Exception):
 
 class VoteExceptionAlreadyVoted(Exception):
     """Raised when a voter tries to vote again."""
+
+class DBExceptionEmailAlreadyUsed(Exception):
+    """Email already used."""
