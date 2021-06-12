@@ -6,6 +6,7 @@ import os
 from datetime import datetime
 from typing import Union
 import re
+from copy import copy
 
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 from sqlalchemy.orm import sessionmaker, scoped_session
@@ -13,6 +14,7 @@ from sqlalchemy import create_engine as sqlalchemy_create_engine
 from sqlalchemy import Column, Integer, ForeignKey, String, Table, Float, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.sql.expression import desc
+from tabulate import tabulate
 
 from .exceptions import (VoteExceptionTooFew, VoteExceptionWrongId,
                          VoteExceptionNegative, VoteExceptionWrongTime,
@@ -245,6 +247,11 @@ def polls_from_event(event_identifier: Union[int, str, None],
     event = get_event(event_identifier, session=session)
     return session.query(Poll).filter_by(event_id=event.event_id).order_by(desc('start_time')).all()
 
+def most_recent_poll(session: Union[SQLAlchemySession, None]=None):
+    """Returns poll for an event, sorted by start time (most recent is first)."""
+    session = get_session(session)
+    return session.query(Poll).order_by(desc('start_time')).first()
+
 class PollOption(Base):
     __tablename__ = 'poll_options'
 
@@ -361,3 +368,37 @@ def cast_vote(voter: Voter, vote_dict: dict,
 def create_all_tables(engine):
     Base.metadata.create_all(engine)
 
+def render_table(table_obj, session: Union[SQLAlchemySession, None]=None,
+                 **tabulate_kwargs):
+    """Renders a string representation of a table."""
+    session = get_session(session)
+    query = session.query(table_obj).all()
+    if len(query) == 0:
+        return "Empty table"
+    cols = [
+        col for col in query[0].__dict__.keys()
+        if col != '_sa_instance_state'
+    ]
+    rows = [
+        [
+            getattr(elem, col) for col in cols
+        ]
+        for elem in query
+    ]
+    return tabulate(rows, headers=cols, **tabulate_kwargs)
+
+def votes_to_table(poll_id, session: Union[SQLAlchemySession, None]=None,
+                  **tabulate_kwargs):
+    poll_options = poll_options_from_poll(poll_id, session=session)
+    cols = [
+        'name',
+        'total_votes'
+    ]
+    nice_cols = ['Option', 'Votes']
+    rows = []
+    for poll_option in poll_options:
+        rows.append([
+            getattr(poll_option, col)
+            for col in cols
+        ])
+    return tabulate(rows, headers=nice_cols, **tabulate_kwargs)

@@ -8,7 +8,8 @@ from electobot.database import (create_engine, create_all_tables,
                                 voter_from_token, voter_from_email,
                                 create_proxy, votes_for_voter, create_poll,
                                 polls_from_event, create_poll_option,
-                                poll_options_from_poll, cast_vote)
+                                poll_options_from_poll, cast_vote,
+                                render_table, Event)
 from electobot.exceptions import VoteExceptionTooFew, VoteExceptionNegative
 
 def create_test_engine():
@@ -197,3 +198,8 @@ def perform_vote(clean_session):
         assert False
     except VoteExceptionAlreadyVoted:
         assert True
+
+def test_render_table(clean_session):
+    # Just test for crash
+    create_event("Anything", session=clean_session)
+    print(render_table(Event, clean_session))
