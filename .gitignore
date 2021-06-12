@@ -4,3 +4,6 @@ __pycache__
 # virtualenv
 .venv
 venv
+
+# electobot stuff
+mail_credentials

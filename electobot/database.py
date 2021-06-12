@@ -77,14 +77,11 @@ class Event(Base):
     create_time = Column(DateTime, nullable=False)
     token = Column(String, nullable=False, unique=True)
 
-    def __init__(self, name):
+    def __init__(self, name, token):
         now = datetime.utcnow()
         self.name = name
         self.simple_name = simplify_event_name(name, now)
         self.create_time = now
-        token = gen_token()
-        while event_from_token(token, session=session) is not None:
-            token = gen_token()
         self.token = token
 
 def event_from_identifier(identifier: Union[str, int],
@@ -128,7 +125,7 @@ def event_from_identifier(identifier: Union[str, int],
         event = session.query(Event).filter_by(name=identifier).first()
         return event # can be None
 
-def event_from_token(token: str, session: Union[SQLAlchemySession, None]=None) -> Union[Voter, None]:
+def event_from_token(token: str, session: Union[SQLAlchemySession, None]=None) -> Union[Event, None]:
     """Returns the Event with a given token, if exists. Otherwise, 
     returns None.
     """
@@ -151,7 +148,11 @@ def get_event(event_identifier,
     return event
 
 def create_event(name: str, session: Union[SQLAlchemySession, None]=None) -> Event:
-    event = Event(name=name)
+    session = get_session(session)
+    token = gen_token()
+    while event_from_token(token, session=session) is not None:
+        token = gen_token()
+    event = Event(name=name, token=token)
     add_and_commit(event, session)
     return event
 
