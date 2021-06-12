@@ -4,11 +4,15 @@ This module is responsible for fetching data from and into the database.
 import logging
 import os
 from datetime import datetime
+from typing import Union
+import re
 
+from sqlalchemy.orm.session import Session as SQLAlchemySession
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy import create_engine as sqlalchemy_create_engine
 from sqlalchemy import Column, Integer, ForeignKey, String, Table, Float, DateTime
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.sql.expression import desc
 
 from .exceptions import (VoteExceptionTooFew, VoteExceptionWrongId,
                          VoteExceptionNegative)
@@ -19,7 +23,7 @@ DATA_DIR = os.environ.get('ELECTOBOT_DATA_DIR', 'data')
 ABSTAIN_KEY = 'abstain'
 
 def create_engine(path=os.path.join(DATA_DIR, 'db.sqlite'), echo=False):
-    if not os.path.exists(os.path.dirname(path)):
+    if path != ":memory:" and not os.path.exists(os.path.dirname(path)):
         os.makedirs(os.path.dirname(path))
     engine = sqlalchemy_create_engine('sqlite:///' + path, echo=echo)
     with engine.connect() as connection:
@@ -34,11 +38,11 @@ def create_session(engine):
 def create_default_session():
     return create_session(create_engine())
 
-def get_session(session=None: Union[SQLAlchemyEvent, None]) -> Event:
+def get_session(session: Union[SQLAlchemySession, None]=None) -> SQLAlchemySession:
     session = session if session else create_default_session()
     return session
 
-def add_and_commit(thing, session=None: Union[SQLAlchemyEvent, None]) -> None:
+def add_and_commit(thing, session: Union[SQLAlchemySession, None]=None) -> None:
     session = get_session(session)
     session.add(thing)
     session.commit()
@@ -53,7 +57,7 @@ def simplify_event_name(name: str, datetime: datetime):
     format is prepended to the string.
     """
     date_str = datetime.strftime("%Y-%m-%d")
-    simpler_core re.sub('[^A-Za-z0-9 ]+', '', name)
+    simpler_core = re.sub('[^A-Za-z0-9 ]+', '', name).lower()
     simplified_core = simpler_core.replace(' ', '_')
     simplified_name = '{}-{}'.format(date_str, simplified_core)
     return simplified_name
@@ -73,7 +77,7 @@ class Event(Base):
         self.create_time = now
 
 def event_from_identifier(identifier: Union[str, int],
-                          session=None: Union[SQLAlchemySession, None]) -> Union[Event, None]:
+                          session: Union[SQLAlchemySession, None]=None) -> Union[Event, None]:
     """Returns an event from an identifier, which can be:
         - its id
         - its simplified name
@@ -114,12 +118,12 @@ def event_from_identifier(identifier: Union[str, int],
         return event # can be None
 
 def most_recent_event(
-        session=None: Union[SQLAlchemySession, None]) -> Union[Event, None]:
+        session: Union[SQLAlchemySession, None]=None) -> Union[Event, None]:
     session = get_session(session)
     return session.query(Event).order_by(desc('create_time')).first()
 
 def get_event(event_identifier,
-              session=None: Union[SQLAlchemySession, None]) -> Union[Event,
+              session: Union[SQLAlchemySession, None]=None) -> Union[Event,
                                                                      None]:
     session = get_session(session)
     if event_identifier is None:
@@ -128,8 +132,8 @@ def get_event(event_identifier,
         event = event_from_identifier(event_identifier, session=session)
     return event
 
-def create_event(name: str, session=None: Union[SQLAlchemySession, None]) -> Session:
-    event = Event(name=name, create_time=now)
+def create_event(name: str, session: Union[SQLAlchemySession, None]=None) -> Event:
+    event = Event(name=name)
     add_and_commit(event, session)
     return event
 
@@ -143,7 +147,7 @@ class Voter(Base):
     token = Column(String, nullable=False, unique=True)
 
 def voter_from_email(event_identifier: Union[int, str, None],
-                     email: str, session=None: Union[SQLAlchemySession, None]) -> Union[Voter, None]:
+                     email: str, session: Union[SQLAlchemySession, None]=None) -> Union[Voter, None]:
     """Returns the Voter with a given token, if exists. Otherwise, 
     returns None.
     """
@@ -153,8 +157,8 @@ def voter_from_email(event_identifier: Union[int, str, None],
                                           email=email).first()
 
 def create_voter(event_identifier: Union[int, str, None],
-                 email: str, session=None:
-                 Union[SQLAlchemySession, None]) -> Voter:
+                 email: str,
+                 session: Union[SQLAlchemySession, None]=None) -> Voter:
     """Creates a voter for an event. If the event is None, the voter will be
     for the most recent event.
     """
@@ -174,8 +178,8 @@ class Proxy(Base):
     email = Column(String, primary_key=True)
 
 def create_proxy(event_identifier: Union[str, int, None],
-                 voter_email: str, proxy_email: str, session=None:
-                 Union[SQLAlchemySession, None]) -> Proxy:
+                 voter_email: str, proxy_email: str,
+                 session: Union[SQLAlchemySession, None]=None) -> Proxy:
     # TODO: Check for if the proxy exists already either as a voter or as a
     # proxy at this event.
     session = get_session(session)
@@ -184,13 +188,13 @@ def create_proxy(event_identifier: Union[str, int, None],
     add_and_commit(proxy, session)
     return proxy
 
-def proxies_from_voter(voter: Voter, session=None:
-                       Union[SQLAlchemySession, None]) -> Proxy:
+def proxies_from_voter(voter: Voter,
+                       session: Union[SQLAlchemySession, None]=None) -> Proxy:
     session = get_session(session)
     return session.query(Proxy).filter_by(voter_id=voter.voter_id).all()
 
-def votes_for_voter(voter: Voter, session=None:
-                    Union[SQLAlchemySession, None]) -> Proxy:
+def votes_for_voter(voter: Voter,
+                    session: Union[SQLAlchemySession, None]=None) -> Proxy:
     """
     Returns the number of votes that a voter must give, defined as
     1 + number of proxies. If voter doesn't exist, return 0.
@@ -212,9 +216,9 @@ class Poll(Base):
     end_time = Column(DateTime, nullable=True)
 
 def create_poll(event_identifier: Union[int, str, None],
-                name: str, start_time=None: Union[datetime, None],
-                end_time=None: Union[datetime, None],
-                session=None: Union[SQLAlchemySession, None]) -> Voter:
+                name: str, start_time: Union[datetime, None]=None,
+                end_time: Union[datetime, None]=None,
+                session: Union[SQLAlchemySession, None]=None) -> Voter:
     session = get_session(session)
     if start_time is None:
         start_time = datetime.utcnow()
@@ -225,7 +229,7 @@ def create_poll(event_identifier: Union[int, str, None],
     return poll
 
 def polls_from_event(event_identifier: Union[int, str, None],
-                     session=None: Union[SQLAlchemySession, None]):
+                     session: Union[SQLAlchemySession, None]=None):
     session = get_session(session)
     event = get_event(event_identifier, session=session)
     return session.query(Poll).filter_by(event_id=event.event_id).all()
@@ -245,7 +249,7 @@ class PollOption(Base):
         self.total_votes = 0
 
 def poll_options_from_poll(poll_id: int,
-                           session=None: Union[SQLAlchemySession, None]):
+                           session: Union[SQLAlchemySession, None]=None):
     session = get_session(session)
     return session.query(PollOption).filter_by(poll_id=poll_id).all()
 
@@ -256,7 +260,7 @@ class VotesTaken(Base):
     poll_id = Column(ForeignKey('polls.poll_id', ondelete="CASCADE"), primary_key=True)
 
 def cast_vote(voter: Voter, vote_dict: dict,
-              session=None: Union[SQLAlchemySession, None]):
+              session: Union[SQLAlchemySession, None]=None) -> None:
     """Casts a vote. The vote_dict is a dictionary of 
         <poll_option_id>: <number of votes>.
     
