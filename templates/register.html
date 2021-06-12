@@ -1,0 +1,24 @@
+<head>
+<meta charset="utf-8">
+<title>Electobot</title>
+<style type="text/css">body{margin:40px
+auto;max-width:640px;line-height:1.7;font-size:18px;color:#444;padding:0
+10px}h1{line-height:1.4}input{margin-bottom: 10px;}</style>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+<h1>
+    Electobot
+</h1>
+<p>Welcome.</p>
+<div>
+  <form action="/register?event_token={% event_token %}" method="post">
+   <p>Please provide your university email address to sign up for the event <i>{% event_name %}</i>.</p>
+<input placeholder="Email" name="email" required="required" type="email" id="email" />
+</br>
+</br></br>
+<input type="submit" value="Proceed"/>
+</form> 
+</div>
+</body>
+

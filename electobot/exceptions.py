@@ -5,6 +5,9 @@ class VoteExceptionNegative(Exception):
 class VoteExceptionTooFew(Exception):
     """Raised when not all available votes for a user are cast."""
 
+class VoteExceptionTooMany(Exception):
+    """Raised when too many votes cast."""
+
 class VoteExceptionWrongId(Exception):
     """Raised when not all `poll_option_id`s refer to the same poll."""
 

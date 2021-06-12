@@ -16,9 +16,10 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.sql.expression import desc
 from tabulate import tabulate
 
-from .exceptions import (VoteExceptionTooFew, VoteExceptionWrongId,
-                         VoteExceptionNegative, VoteExceptionWrongTime,
-                         VoteExceptionWrongEvent, VoteExceptionAlreadyVoted)
+from .exceptions import (VoteExceptionTooFew, VoteExceptionTooMany,
+                         VoteExceptionWrongId, VoteExceptionNegative,
+                         VoteExceptionWrongTime, VoteExceptionWrongEvent,
+                         VoteExceptionAlreadyVoted)
 from .token import gen_token
 
 logger = logging.getLogger('databases')
@@ -74,12 +75,17 @@ class Event(Base):
     simple_name = Column(String, nullable=False, unique=True)
     name = Column(String, nullable=False, unique=True)
     create_time = Column(DateTime, nullable=False)
+    token = Column(String, nullable=False, unique=True)
 
     def __init__(self, name):
         now = datetime.utcnow()
         self.name = name
         self.simple_name = simplify_event_name(name, now)
         self.create_time = now
+        token = gen_token()
+        while event_from_token(token, session=session) is not None:
+            token = gen_token()
+        self.token = token
 
 def event_from_identifier(identifier: Union[str, int],
                           session: Union[SQLAlchemySession, None]=None) -> Union[Event, None]:
@@ -121,6 +127,13 @@ def event_from_identifier(identifier: Union[str, int],
         # Try as full name
         event = session.query(Event).filter_by(name=identifier).first()
         return event # can be None
+
+def event_from_token(token: str, session: Union[SQLAlchemySession, None]=None) -> Union[Voter, None]:
+    """Returns the Event with a given token, if exists. Otherwise, 
+    returns None.
+    """
+    session = get_session(session)
+    return session.query(Event).filter_by(token=token).first()
 
 def most_recent_event(
         session: Union[SQLAlchemySession, None]=None) -> Union[Event, None]:
@@ -247,6 +260,16 @@ def polls_from_event(event_identifier: Union[int, str, None],
     event = get_event(event_identifier, session=session)
     return session.query(Poll).filter_by(event_id=event.event_id).order_by(desc('start_time')).all()
 
+def poll_from_id(poll_id: Union[str, int],
+                 session: Union[SQLAlchemySession, None]=None):
+    """Returns poll for an event, sorted by start time (most recent is first)."""
+    session = get_session(session)
+    try:
+        int_id = int(poll_id)
+        return session.query(Poll).filter_by(poll_id=int_id).first()
+    except:
+        return None
+
 def most_recent_poll(session: Union[SQLAlchemySession, None]=None):
     """Returns poll for an event, sorted by start time (most recent is first)."""
     session = get_session(session)
@@ -329,6 +352,8 @@ def cast_vote(voter: Voter, vote_dict: dict,
     # Validate
     if sum(vote_dict.values() < votes_for_voter(voter, session=session)):
         raise VoteExceptionTooFew
+    if sum(vote_dict.values() > votes_for_voter(voter, session=session)):
+        raise VoteExceptionTooMany
     if any(val < 0 for val in vote_dict.values()):
         raise VoteExceptionNegative
     poll_id = None
