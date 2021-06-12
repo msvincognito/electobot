@@ -15,7 +15,9 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.sql.expression import desc
 
 from .exceptions import (VoteExceptionTooFew, VoteExceptionWrongId,
-                         VoteExceptionNegative)
+                         VoteExceptionNegative, VoteExceptionWrongTime,
+                         VoteExceptionWrongEvent, VoteExceptionAlreadyVoted)
+from .token import gen_token
 
 logger = logging.getLogger('databases')
 
@@ -58,6 +60,7 @@ def simplify_event_name(name: str, datetime: datetime):
     """
     date_str = datetime.strftime("%Y-%m-%d")
     simpler_core = re.sub('[^A-Za-z0-9 ]+', '', name).lower()
+    simpler_core = re.sub('[ ]+', ' ', simpler_core)
     simplified_core = simpler_core.replace(' ', '_')
     simplified_name = '{}-{}'.format(date_str, simplified_core)
     return simplified_name
@@ -170,6 +173,13 @@ def create_voter(event_identifier: Union[int, str, None],
     add_and_commit(voter, session)
     return voter
 
+def voter_from_token(token: str, session: Union[SQLAlchemySession, None]=None) -> Union[Voter, None]:
+    """Returns the Voter with a given token, if exists. Otherwise, 
+    returns None.
+    """
+    session = get_session(session)
+    return session.query(Voter).filter_by(token=token).first()
+
 class Proxy(Base):
     __tablename__ = 'proxies'
 
@@ -184,7 +194,7 @@ def create_proxy(event_identifier: Union[str, int, None],
     # proxy at this event.
     session = get_session(session)
     voter = voter_from_email(event_identifier, voter_email, session=session)
-    proxy = Proxy(voter_id=voter_id, email=proxy_email)
+    proxy = Proxy(voter_id=voter.voter_id, email=proxy_email)
     add_and_commit(proxy, session)
     return proxy
 
@@ -201,7 +211,7 @@ def votes_for_voter(voter: Voter,
     """
     if voter is None:
         return 0
-    proxies = proxies_from_voter(event_identifier, voter_email,
+    proxies = proxies_from_voter(voter,
                                  session=session)
     return 1 + len(proxies)
 
@@ -230,36 +240,68 @@ def create_poll(event_identifier: Union[int, str, None],
 
 def polls_from_event(event_identifier: Union[int, str, None],
                      session: Union[SQLAlchemySession, None]=None):
+    """Returns poll for an event, sorted by start time (most recent is first)."""
     session = get_session(session)
     event = get_event(event_identifier, session=session)
-    return session.query(Poll).filter_by(event_id=event.event_id).all()
+    return session.query(Poll).filter_by(event_id=event.event_id).order_by(desc('start_time')).all()
 
 class PollOption(Base):
     __tablename__ = 'poll_options'
 
     poll_option_id = Column(Integer, primary_key=True)
+    name = Column(String)
     poll_id = Column(ForeignKey('polls.poll_id', ondelete="CASCADE"),
                      nullable=False)
-    name = Column(String, primary_key=True)
-    total_votes = Column(Integer)
+    total_votes = Column(Integer, default=0)
 
-    def __init__(self, poll_id, name):
-        self.poll_id = poll_id
-        self.name = name
-        self.total_votes = 0
+def create_poll_option(poll_id: int, name: str,
+                       session: Union[SQLAlchemySession, None]=None) -> PollOption:
+    poll_option = PollOption(poll_id=poll_id, name=name)
+    add_and_commit(poll_option, session)
+    return poll_option
 
 def poll_options_from_poll(poll_id: int,
                            session: Union[SQLAlchemySession, None]=None):
     session = get_session(session)
     return session.query(PollOption).filter_by(poll_id=poll_id).all()
 
-class VotesTaken(Base):
-    __tablename__ = 'votes_taken'
+def close_poll(poll_id: int, time: Union[datetime, None]=None,
+               session: Union[SQLAlchemySession, None]=None):
+    session = get_session(session)
+    if time is None:
+        time = datetime.utcnow()
+    poll = session.query(Poll).filter_by(poll_id=poll_id).first()
+    assert poll.start_time <= time
+    poll.end_time = time
+    session.commit()
+
+class VoteCast(Base):
+    __tablename__ = 'votes_cast'
 
     voter_id = Column(ForeignKey('voters.voter_id', ondelete="CASCADE"), primary_key=True)
     poll_id = Column(ForeignKey('polls.poll_id', ondelete="CASCADE"), primary_key=True)
 
+def is_voter_registered_for_poll(voter: Voter, poll: Poll,
+                                 session: Union[SQLAlchemySession, None]=None) -> bool:
+    return voter.event_id == poll.event_id
+
+def has_voter_voted(voter: Voter, poll: Poll,
+                    session: Union[SQLAlchemySession, None]=None) -> bool:
+    cast = session.query(VoteCast).filter_by(
+        voter_id=voter.voter_id, poll_id=poll.poll_id).first()
+    if cast is None:
+        return False
+    else:
+        return True
+
+def _cast_vote_into_table(voter: Voter, poll: Poll,
+                          session: Union[SQLAlchemySession, None]=None) -> VoteCast:
+    vote_cast = VoteCast(voter_id=voter.voter_id, poll_id=poll.poll_id)
+    add_and_commit(vote_cast, session)
+    return vote_cast
+
 def cast_vote(voter: Voter, vote_dict: dict,
+              time: Union[datetime, None]=None,
               session: Union[SQLAlchemySession, None]=None) -> None:
     """Casts a vote. The vote_dict is a dictionary of 
         <poll_option_id>: <number of votes>.
@@ -269,8 +311,14 @@ def cast_vote(voter: Voter, vote_dict: dict,
           votes for a voter. There is a possible option "None" for abstaining.
         - The votes must be nonnegative.
         - The `poll_option_id`s must refer to options from a single poll.
+        - The `time` is after the start time of the poll and before the end
+          time. If it's not given, it's taken to be `datetime.utcnow()`
+        - The voter did not yet cast a vote in this poll.
+        - The voter is registered for the event where this poll is.
     """
     session = get_session(session)
+    if time is None:
+        time = datetime.utcnow()
     # Validate
     if sum(vote_dict.values() < votes_for_voter(voter, session=session)):
         raise VoteExceptionTooFew
@@ -292,6 +340,15 @@ def cast_vote(voter: Voter, vote_dict: dict,
             continue
         if poll_option.poll_id != poll_id:
             raise VoteExceptionWrongId
+    poll = session.query(Poll).filter_by(poll_id=poll_id).first()
+    if not is_voter_registered_for_poll(voter, poll, session=session):
+        raise VoteExceptionWrongEvent
+    if has_voter_voted(voter, poll, session=session):
+        raise VoteExceptionAlreadyVoted
+    if time < poll.start_time:
+        raise VoteExceptionWrongTime
+    elif time >= poll.end_time:
+        raise VoteExceptionWrongTime
     # Update vote counts
     for key, votes in vote_dict.items():
         if key == ABSTAIN_KEY or key is None:
