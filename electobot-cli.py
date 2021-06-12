@@ -101,7 +101,7 @@ def main():
     elif args.command == 'create':
         if args.object == 'event':
             event = create_event(args.name, session=session)
-            print("Event {} created: {}".format(event_register_url(event.event_id, session=session)))
+            print("Event {} created: {}".format(event.name, event_register_url(event.event_id, session=session)))
         elif args.object == 'poll':
             create_poll(args.event, args.name, session=session)
         elif args.object == 'poll_option':
