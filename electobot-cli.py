@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import os
 
 from tabulate import tabulate
 
@@ -22,6 +23,8 @@ NAME_TYPE_MAPPING = {
     'proxies': Proxy
 }
 
+DEFAULT_MAIL_PATTERN = os.environ.get('ELECTOBOT_EMAIL_PATTERN', ".*@.*\..*")
+
 def main():
     parser = argparse.ArgumentParser(description='Manage elections.')
     parser.add_argument('-p', '--path', default=None,
@@ -38,7 +41,7 @@ def main():
     ## Create event
     create_event_parser = create_subparsers.add_parser('event', help="Add event")
     create_event_parser.add_argument('name')
-    create_event_parser.add_argument('--email_pattern', default=".*@.*\..*")
+    create_event_parser.add_argument('--email_pattern', default=DEFAULT_MAIL_PATTERN)
     ## Create poll
     create_poll_parser = create_subparsers.add_parser('poll',
                                                       help="Add poll")
