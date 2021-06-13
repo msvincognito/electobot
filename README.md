@@ -8,11 +8,12 @@ Supports:
 
 This vote was intended for Incognito events that require voting. Feel free to do whatever you want with it.
 
-## Workflow
-All data is stored in an sqlite database.
-
-### Mail credentials
-Mail credentials should be stored in a file named `mail_credentials` in this format:
+## Usage
+### Running locally
+To set up the service locally, install requirements in your favourive virtual
+environment `pip install -r requirements.txt`. Then, you need to make a
+`mail_credentials` file in your current working directory with contents as follows,
+line by line:
 ```
 Mail server (e.g. mail.msvincognito.nl)
 port number (e.g. 465)
@@ -20,41 +21,71 @@ username (e.g. electobot)
 password (e.g. hunter2)
 sender email (e.g. electobot@msvincognito.nl)
 ```
-### Management CLI
-Install the requirements:
+With that done, now you can use the `./electobot-cli.py` script to manage the votes.
+Before you can launch the server itself, run these commands. They will set up the
+database and give you a register link you can send out to people:
 ```shell
-pip install -r requirements.txt
+# Create the sqlite database with tables
+./electobot-cli.py setup
+# Create an event. Running the line below returns a reigster link, which you can send
+# out to people to sign up once you start the server itself
+./electobot-cli.py create event "General Assembly"
+```
+Now that there is an event, you can launch the server for testing locally as
+```shell
+python -m flask run
+```
+Now the flask server is running (presumably at `localhost:5000`), so you can check it
+out there. To open a vote, do the following:
+```shell
+./electobot-cli.py create poll "Is the new president elected?"
+./electobot-cli.py create poll_option "Yes"
+./electobot-cli.py create poll_option "No"
+./electobot-cli.py open
 ```
 
-Setup the bot:
+Once people are done voting, you can do
 ```shell
-python electobot-cli.py setup
-```
-Create an event and poll
-```shell
-python electobot-cli.py create event <name>
-python electobot-cli.py create poll [-e | --event <session>] [name]
-python electobot-cli.py create poll_option [--poll_id <POLL_ID>] [name]
-python electobot-cli.py open [--poll_id <POLL_ID>]
+./electobot-cli.py tally
 ```
 
-Listing all events:
+By default commands refer to the most recent event/poll, but you can change that by
+using the `--event` or `--poll_id` argument. You can see a list of all polls/events
+in the database by running
 ```shell
-python electobot-cli.py list events
+./electobot-cli.py print_table polls
 ```
-Deleting an event:
+or
+```shell
+./electobot-cli.py print_table events
+```
+the output is a bit messy, because it's literally the entire SQL table. Sorry about
+that.
+
+To get a list of events with register links for them, do
+```shell
+./electobot-cli.py list events
+```
+
+You can also delete events as follows:
 ```shell
 python electobot-cli.py delete event <event_id>
 ```
 
-Running the server locally (for testing only):
-```shell
-python -m flask run
-```
-### Database schema
- - Event - a single voting event (e.g. general assembly) which has specific people
-   present and may include multiple polls
- - Poll - a single poll (or vote) connected to a session, with a name and start time.
- - Voter - a single voter at a session, who may have a number of extra (proxy) votes
- - VotesTaken - a table matching who voted, so who should not vote again on a poll
- - PollOption - an option in a poll
+### Running on a server
+When running this on a server, you should be sure to use SSL. This way people's email
+addresses won't fly through the cyberspace in plaintext. To do that, we provided a
+docker setup which runs an nginx server that accepts SSL encrypted requests and
+forwards them to the electobot backend. Before you can use this, you need to get some
+certificates. We recommend letsencrypt. Look into `certbot` for how to obtain them.
+
+Once you have these certificates, you need to have Docker and `docker-compose`
+installed. Then go to the `docker-infrastructure` directory and modify the `.env`
+config file with parameters of choice. Then, run `docker-compose up -d`. This will
+build the electobot Docker image and launch the app. There is a `./electobot-cli.py`
+helper script in the `docker-infrastructure` directory which talks to the
+`./electobot-cli.py` script on the Docker container for managing the service. Make
+sure you have a `mail_credentials` file in the root directory of the repo, like
+described in the `Running locally` section.
+
+Good luck.
