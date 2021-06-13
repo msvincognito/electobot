@@ -1,19 +1,48 @@
 <head>
-<meta charset="utf-8">
-<title>Electobot</title>
-<style type="text/css">body{margin:40px
-auto;max-width:640px;line-height:1.7;font-size:18px;color:#444;padding:0
-10px}h1{line-height:1.4}</style>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="utf-8">
+  <title>Electobot</title>
+  <style type="text/css">
+    body {
+      margin: 40px auto;
+      max-width: 640px;
+      line-height: 1.7;
+      font-size: 18px;
+      color: #444;
+      padding: 0 10px
+    }
+
+    h1 {
+      line-height: 1.4
+    }
+  </style>
+  <link rel="stylesheet" type="text/css" href="{{ url_for('static',filename='styles/style.css') }}">
+  <link href="https://use.fontawesome.com/releases/v5.0.7/css/all.css" rel="stylesheet" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
+
 <body>
-<h1>
+  {% for m in infos %}
+  <div class="info">{{ m }}</div>
+  {% endfor %}
+  {% for m in successes %}
+  <div class="success">{{ m }}</div>
+  {% endfor %}
+  {% for m in warnings %}
+  <div class="warning">{{ m }}</div>
+  {% endfor %}
+  {% for m in errors %}
+  <div class="error">{{ m }}</div>
+  {% endfor %}
+  <h1>
     Electobot
-</h1>
-<div>
-  Available votes:
-  <ul>
-    {% list %}
-  <ul>
-</div>
+  </h1>
+
+  <div>
+    Available votes:
+    <ul>
+      {% for vote in list %}
+      <li><a href="{{ vote['href'] }}">{{ vote['name'] }}</a></li>
+      {% endfor %}
+      <ul>
+  </div>
 </body>

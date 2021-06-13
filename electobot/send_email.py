@@ -27,4 +27,3 @@ def send_message(address, subject, message):
         server.login(username, password)
         server.sendmail(sender_email, address,
                         msg.as_string())
-
