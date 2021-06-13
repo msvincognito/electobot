@@ -18,7 +18,7 @@ http {
     return         301 https://$host$request_uri;
   }
 
-## User management
+## Electobot
 
   server {
     listen 443;
