@@ -3,30 +3,27 @@ import ssl
 from email.mime.text import MIMEText
 
 
-port = 465  # For SSL
 
 def send_message(address, subject, message):
-# Create a secure SSL context
+    # Create a secure SSL context
     context = ssl.create_default_context()
 
-# Define the message
+    # Define the message
 
-    sender = "electobot@msvincognito.nl"
     receivers = [address]
 
-    port = 465
-
+    with open('mail_credentials') as file_:
+        server_address, port, username, password, sender_email = file_.read().splitlines()
+    
     msg = MIMEText(message)
 
     msg['Subject'] = subject
-    msg['From'] = 'electobot@msvincognito.nl'
+    msg['From'] = "Electobot"
     msg['To'] = address
 
-    with open('mail_credentials') as file_:
-        username, password = file_.read().splitlines()
-
-    with smtplib.SMTP_SSL("mail.msvincognito.nl", port, context=context) as server:
+    
+    port = int(port)
+    with smtplib.SMTP_SSL(server_address, port, context=context) as server:
         server.login(username, password)
-        server.sendmail("electobot@msvincognito.nl", address,
+        server.sendmail(sender_email, address,
                         msg.as_string())
-

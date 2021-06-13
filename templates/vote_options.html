@@ -1,26 +1,84 @@
 <head>
-<meta charset="utf-8">
-<title>Electobot</title>
-<style type="text/css">body{margin:40px
-auto;max-width:640px;line-height:1.7;font-size:18px;color:#444;padding:0
-10px}h1{line-height:1.4}input{margin-bottom: 10px;}</style>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body>
-<h1>
-    Electobot
-</h1>
-<div>
-  <form action="/vote?token={% voter_token %}&poll_id={% poll_id %}" method="post">
-    {% proxy_html %}
-    Cast your votes:
-    <ul>
-        {% options_list_html %}
-    </ul>
-</br>
-</br></br>
-<input type="submit" value="Submit"/>
-</form> 
-</div>
-</body>
+    <meta charset="utf-8">
+    <title>Electobot</title>
+    <style type="text/css">
+        body {
+            margin: 40px auto;
+            max-width: 640px;
+            line-height: 1.7;
+            font-size: 18px;
+            color: #444;
+            padding: 0 10px
+        }
 
+        h1 {
+            line-height: 1.4
+        }
+
+        input {
+            margin-bottom: 10px;
+        }
+        
+    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static',filename='styles/style.css') }}">
+    <link href="https://use.fontawesome.com/releases/v5.0.7/css/all.css" rel="stylesheet" />
+</head>
+
+<body>
+    {% for m in infos %}
+    <div class="info">{{ m }}</div>
+    {% endfor %}
+    {% for m in successes %}
+    <div class="success">{{ m }}</div>
+    {% endfor %}
+    {% for m in warnings %}
+    <div class="warning">{{ m }}</div>
+    {% endfor %}
+    {% for m in errors %}
+    <div class="error">{{ m }}</div>
+    {% endfor %}
+    <h1>
+        Electobot
+    </h1>
+    <div>
+        <form action="/vote?token={{ voter_token }}&poll_id={{ poll_id }}" method="post">
+            {{ proxy_message }}
+            Cast your votes:
+            <ul>
+                {% for option in option_list %}
+                <li>
+                    <label for="vote${{ option.poll_option_id }}">{{ option.name }}:</label>
+                    <input class="option" onchange="checkpoll()" type="number" id="vote${{ option.poll_option_id }}"
+                        name="vote${{ option.poll_option_id }}" min="0" max="{{ vote_count }}" step="1" value="0">
+                </li>
+                {% endfor %}
+            </ul>
+            <div id="infobox"></br></div>
+            </br>
+            
+            <input id="submit" type="submit" disabled="" value="Submit" />
+        </form>
+    </div>
+    <script>
+        function checkpoll() {
+            count = 0;
+            options = document.getElementsByClassName("option");
+            for (var i=0; i<options.length; i++) {
+                count += parseInt(options[i].value);
+            }
+            infobox = document.getElementById("infobox");
+            submit = document.getElementById("submit");
+            if (count != {{ vote_count }}) {
+                infobox.classList.add('warning');
+                infobox.innerHTML = "You should vote {{ vote_count }} times"
+                submit.disabled = true;
+            }
+            else {
+                infobox.classList.remove('warning');
+                infobox.innerHTML = "</br>"
+                submit.disabled = false;
+            }
+        }
+    </script>
+</body>

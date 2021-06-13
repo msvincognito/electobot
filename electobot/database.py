@@ -77,13 +77,15 @@ class Event(Base):
     name = Column(String, nullable=False, unique=True)
     create_time = Column(DateTime, nullable=False)
     token = Column(String, nullable=False, unique=True)
+    email_pattern = Column(String, nullable=False)
 
-    def __init__(self, name, token):
+    def __init__(self, name, token, email_pattern):
         now = datetime.utcnow()
         self.name = name
         self.simple_name = simplify_event_name(name, now)
         self.create_time = now
         self.token = token
+        self.email_pattern = email_pattern
 
 def event_from_identifier(identifier: Union[str, int],
                           session: Union[SQLAlchemySession, None]=None) -> Union[Event, None]:
@@ -148,14 +150,27 @@ def get_event(event_identifier,
         event = event_from_identifier(event_identifier, session=session)
     return event
 
-def create_event(name: str, session: Union[SQLAlchemySession, None]=None) -> Event:
+def create_event(name: str, email_pattern: str , session: Union[SQLAlchemySession, None]=None) -> Event:
     session = get_session(session)
     token = gen_token()
     while event_from_token(token, session=session) is not None:
         token = gen_token()
-    event = Event(name=name, token=token)
+    event = Event(name=name, token=token, email_pattern=email_pattern)
     add_and_commit(event, session)
     return event
+
+def delete_event(id: int, session: Union[SQLAlchemySession, None]=None) -> Boolean:
+    session = get_session(session)
+    token = gen_token()
+    while event_from_token(token, session=session) is not None:
+        token = gen_token()
+    
+    event=session.query(Event).filter(Event.event_id==id).first()
+    if event is not None:
+        session.delete(event)
+        session.commit()
+        return True
+    return False
 
 class Voter(Base):
     __tablename__ = 'voters'

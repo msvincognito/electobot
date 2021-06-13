@@ -46,6 +46,20 @@ def poll_url(voter_token, poll_id):
     return form_url('vote', {'token': voter_token,
                              'poll_id': poll_id})
 
+def poll_list(voter_token,
+                   session: Union[SQLAlchemySession, None]=None):
+    # list of polls in the event that the voter is taking part in
+    session = get_session(session)
+    voter = voter_from_token(voter_token, session=session)
+    # whether this voter exists should have been validated already
+    polls = polls_from_event(voter.event_id, session=session)
+    list_entries = [{"href": poll_url(voter_token, poll.poll_id),
+                          "name": poll.name}
+        for poll in polls
+        if poll.is_open
+    ]
+    return list_entries
+
 def poll_list_html(voter_token,
                    session: Union[SQLAlchemySession, None]=None):
     # list of polls in the event that the voter is taking part in
@@ -67,6 +81,26 @@ def _vote_option_entry(poll_option_id_str, poll_option_name, vote_count):
 <li><label for="vote${}">{}:</label><input type="number" id="vote${}" name="vote${}" min="0" max="{}" value="0"></li>
 """.format(poll_option_id_str, poll_option_name, poll_option_id_str,
            poll_option_id_str, vote_count)
+
+def poll_options(voter: Voter, poll: Poll,
+                       session: Union[SQLAlchemySession, None]=None):
+    proxies = proxies_from_voter(voter, session=session)
+    if len(proxies) > 0:
+        proxy_str = "You have {} proxy votes. You are voting for yourself and for: {}. ".format(
+            len(proxies), ", ".join([
+                proxy.email for proxy in proxies
+            ]))
+    else:
+        proxy_str = "You have no proxy votes. "
+    vote_count = votes_for_voter(voter, session=session)
+    if vote_count == 1:
+        vote_count_str = "So, you have only 1 vote."
+    else:
+        vote_count_str = "So, you have {} votes.".format(vote_count)
+    proxy_message = proxy_str + vote_count_str
+    option_list = poll_options_from_poll(poll.poll_id, session=session)
+    
+    return proxy_message, vote_count, option_list
 
 def poll_options_html(voter: Voter, poll: Poll,
                        session: Union[SQLAlchemySession, None]=None):
