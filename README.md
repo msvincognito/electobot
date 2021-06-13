@@ -6,6 +6,8 @@ Supports:
  - Proxy votes!
  - Multiple votes per event
 
+This vote was intended for Incognito events that require voting. Feel free to do whatever you want with it.
+
 ## Workflow
 All data is stored in an sqlite database.
 
@@ -32,8 +34,8 @@ Create an event and poll
 ```shell
 python electobot-cli.py create event <name>
 python electobot-cli.py create poll [-e | --event <session>] [name]
-python electobot-cli.py get-register-link [event]
-python electobot-cli.py get-voter-link [-e | --event <session>]
+python electobot-cli.py create poll_option [--poll_id <POLL_ID>] [name]
+python electobot-cli.py open [--poll_id <POLL_ID>]
 ```
 
 Listing all events:
