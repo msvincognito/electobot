@@ -1,0 +1,24 @@
+version: '2'
+services:
+  electobot:
+    build: ../
+    volumes:
+      - /srv/data/electobot:/app/data:rw
+      - ./mail_credentials:/app/mail_credentials:ro
+    environment:
+      - ELECTOBOT_DATA_DIR=/app/data
+      - ELECTOBOT_URL_ROOT=${ELECTOBOT_ROOT_URL}
+      - ELECTOBOT_EMAIL_PATTERN=${ELECTOBOT_EMAIL_PATTERN}
+    restart: always
+  nginx:
+    image: nginx:alpine
+    volumes:
+      - ./nginx/nginx.conf.template:/etc/nginx/templates/nginx.conf.template:ro
+      - ${NGINX_DATA}:/srv/data:rw
+      - ${NGINX_LOGS}:/srv/logs:rw
+      - ${SSL_CERT}:/etc/ssl/cert.pem:ro
+      - ${SSL_KEY}:/etc/ssl/key.pem:ro
+    ports:
+      - 80:80
+      - 443:443
+    restart: always
