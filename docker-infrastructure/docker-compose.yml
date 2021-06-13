@@ -4,7 +4,7 @@ services:
     build: ../
     volumes:
       - /srv/data/electobot:/app/data:rw
-      - ./mail_credentials:/app/mail_credentials:ro
+      - ../mail_credentials:/app/mail_credentials:ro
     environment:
       - ELECTOBOT_DATA_DIR=/app/data
       - ELECTOBOT_URL_ROOT=${ELECTOBOT_ROOT_URL}
