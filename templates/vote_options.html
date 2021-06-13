@@ -49,8 +49,7 @@
                 {% for option in option_list %}
                 <li>
                     <label for="vote${{ option.poll_option_id }}">{{ option.name }}:</label>
-                    <div class="value">0</div>
-                    <input class="option" onchange="checkpoll()" type="range" id="vote${{ option.poll_option_id }}"
+                    <input class="option" onchange="checkpoll()" type="number" id="vote${{ option.poll_option_id }}"
                         name="vote${{ option.poll_option_id }}" min="0" max="{{ vote_count }}" step="1" value="0">
                 </li>
                 {% endfor %}

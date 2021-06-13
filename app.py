@@ -68,20 +68,19 @@ def vote():
     if not voter:
         return render_template('available_votes.html',
                               errors=["Invalid token. Please use the link from your email."])
-    all_votes_url_back = "<a href=\"{}\">Go back</a>".format(voting_url(voter))
+    polls = poll_list(token)
     if request.method == 'GET':
         poll_id = request.args.get('poll_id')
         if not poll_id: # Send a list of possible polls
-            polls = poll_list(token)
             return render_template('available_votes.html', list=polls)
         else: # Otherwise send the list of options
             poll = poll_from_id(poll_id)
             if poll is None or poll.event_id != voter.event_id:
-                return render_template('available_votes.html',
-                                      errors=["No poll with such id: {}. {}".format(poll_id, all_votes_url_back)])
+                return render_template('available_votes.html', list=polls,
+                                      errors=["No poll with such id: {}.".format(poll_id)])
             if has_voter_voted(voter, poll):
-                return render_template('blank.html',
-                                      message="You already voted in this poll. {}".format(all_votes_url_back))
+                return render_template('available_votes.html', list=polls,
+                                      warnings=["You already voted for this poll."])
             proxy_message, vote_count, option_list = poll_options(voter, poll)
             return render_template('vote_options.html',
                                   voter_token=token, poll_id=poll_id,
@@ -90,45 +89,43 @@ def vote():
     elif request.method == 'POST':
         poll_id = request.args.get('poll_id')
         if not poll_id:
-            return render_template('index.html',
-                                  errors=["Broken request. No poll id. {}".format(poll_id, all_votes_url_back
-                                            )])
+            return render_template('available_votes.html', list=polls,
+                                  errors=["Broken request. No poll id. {}".format(poll_id)])
         poll = poll_from_id(poll_id)
         if poll is None or poll.event_id != voter.event_id:
-            return render_template('index.html',
-                                  errors=["No poll with such id: {}. {}".format(poll_id, all_votes_url_back)])
-        this_poll_url_back = "<a href="">Go back</a>".format(poll_url(token,
-                                                                      poll_id))
+            return render_template('available_votes.html', list=polls,
+                                  errors=["No poll with such id: {}.".format(poll_id)])
         try:
             vote_dict = parse_vote_form(request.form)
         except ValueError:
-            return render_template('index.html',
-                                  errors=["Broken request. Try again. {}".format(this_poll_url_back)])
+            return render_template('available_votes.html', list=polls,
+                                  errors=["Broken request. Try again."])
         try:
             cast_vote(voter, vote_dict)
         except VoteExceptionTooFew:
-            return render_template('index.html',
-                                  errors=["Not all possible votes assigned. Try again. {}".format(this_poll_url_back)])
+            return render_template('available_votes.html', list=polls,
+                                  errors=["Not all possible votes assigned. Try again."])
         except VoteExceptionTooMany:
-            return render_template('index.html',
-                                  errors=["Too many votes assigned. Try again. {}".format(this_poll_url_back)])
+            return render_template('available_votes.html', list=polls,
+                                  errors=["Too many votes assigned. Try again."])
         except VoteExceptionWrongId:
-            return render_template('index.html',
-                                  errors=["Wrong id. Try again. {}".format(all_votes_url_back)])
+            return render_template('available_votes.html', list=polls,
+                                  errors=["Wrong id. Try again."])
         except VoteExceptionWrongTime:
-            return render_template('index.html',
-                                  errors=["Wrong time to vote. The vote may be closed already, or has not started yet. {}".format(all_votes_url_back)])
+            return render_template('available_votes.html', list=polls,
+                                  errors=["Wrong time to vote. The vote may be closed already, or has not started yet."])
         except VoteExceptionWrongEvent:
-            return render_template('index.html',
-                                  errors=["Wrong event. {}".format(all_votes_url_back)])
+            return render_template('available_votes.html', list=polls,
+                                  errors=["Wrong event."])
         except VoteExceptionNegative:
-            return render_template('index.html',
-                                  errors=["Can't cast negative votes. Try again. {}".format(this_poll_url_back)])
+            return render_template('available_votes.html', list=polls,
+                                  errors=["Can't cast negative votes. Try again."])
         except VoteExceptionAlreadyVoted:
-            return render_template('index.html',
-                                  errors=["You already voted for this poll. {}".format(all_votes_url_back)])
-        return render_template('blank.html', message='Vote cast! {}'.format(all_votes_url_back))
-
+            return render_template('available_votes.html', list=polls,
+                                  warnings=["You already voted for this poll. "])
+                                  
+        return render_template('available_votes.html', list=polls, successes=['Successfully voted for {}!'.format(poll.name)])
+        
 @app.route('/', methods=['GET'])
 def welcome():
     return render_template('blank.html',
